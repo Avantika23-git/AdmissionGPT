@@ -1,147 +1,295 @@
 import streamlit as st
+import pandas as pd
 
-from chatbot.parser import extract_rank_category
-from chatbot.predictor import recommend_branches
-from chatbot.cutoff_analyzer import analyze_cutoff
-from chatbot.faq_engine import search_faq
+from chatbot.brain import chat
 
+# -----------------------------------
+# PAGE CONFIG
+# -----------------------------------
 
 st.set_page_config(
     page_title="AdmissionGPT",
     page_icon="🎓",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# -----------------------------------
+# CUSTOM CSS
+# -----------------------------------
+
+st.markdown("""
+<style>
+
+.block-container{
+    padding-top:2rem;
+}
+
+h1{
+    color:#0F766E;
+}
+
+.stChatMessage{
+    border-radius:15px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# -----------------------------------
+# SIDEBAR
+# -----------------------------------
+
+with st.sidebar:
+
+    st.title("🎓 AdmissionGPT")
+
+    st.caption(
+        "Government Model Engineering College"
+    )
+
+    st.divider()
+
+    st.subheader("What can I do?")
+
+    st.write("✅ Branch Prediction")
+
+    st.write("✅ Historical Cutoff Analysis")
+
+    st.write("✅ Admission FAQ")
+
+    st.write("✅ AI Chat")
+
+    st.divider()
+
+    st.subheader("Quick Questions")
+
+    quick_questions = [
+
+        "What is CSBS?",
+
+        "How many seats are available in CSE?",
+
+        "What documents are required?",
+
+        "What is the fee structure?",
+
+        "Who is eligible for KEAM?",
+
+        "Can AdmissionGPT guarantee admission?",
+
+        "How is cutoff decided?",
+
+        "What is ECE?",
+
+        "Tell me about Mechanical Engineering.",
+
+        "What can you do?"
+
+    ]
+
+    for q in quick_questions:
+
+        if st.button(q):
+
+            st.session_state.quick_prompt = q
+
+# -----------------------------------
+# HEADER
+# -----------------------------------
 
 st.title("🎓 AdmissionGPT")
-st.subheader(
-    "MEC Admission Assistant"
+
+st.caption(
+    "AI-powered Admission Assistant for Government Model Engineering College"
 )
 
-st.write(
-    """
-    Ask questions about MEC admissions
-    or enter your KEAM Rank and Category.
-    """
-)
+# -----------------------------------
+# WELCOME MESSAGE
+# -----------------------------------
 
+if "messages" not in st.session_state:
 
-user_input = st.text_input(
-    "Enter your query"
-)
+    st.session_state.messages=[]
 
+if len(st.session_state.messages)==0:
 
-if st.button("Submit"):
+    st.info("""
 
-    if user_input:
+👋 Welcome to AdmissionGPT!
 
-        faq_answer = search_faq(
-            user_input
-        )
+You can ask things like:
 
-        if faq_answer:
+• My rank is 3500 and category GN
 
-            st.success(
-                faq_answer
-            )
+• Suggest branches for rank 6000 ST
 
-        else:
+• What is CSBS?
 
-            rank, category = extract_rank_category(
-                user_input
-            )
+• How many seats are available in CSE?
 
-            if rank and category:
+• Required documents
 
-                st.success(
-                    f"Detected Rank: {rank} | Category: {category}"
-                )
+""")
 
-                branches = recommend_branches(
-                    rank,
-                    category
-                )
+# -----------------------------------
+# DISPLAY CHAT HISTORY
+# -----------------------------------
 
-                cutoffs = analyze_cutoff(
-                    rank,
-                    category
-                )
+for message in st.session_state.messages:
 
-                st.subheader(
-                    "Recommended Branches"
-                )
+    with st.chat_message(message["role"]):
 
-                st.dataframe(
-                    branches,
-                    use_container_width=True
-                )
+        if message["role"]=="assistant":
 
-                st.subheader(
-                    "Admission Chances"
-                )
+            if isinstance(message["content"],dict):
 
-                st.dataframe(
-                    cutoffs,
-                    use_container_width=True
-                )
+                if "branches" in message["content"]:
+
+                    st.subheader("🏆 Top Branch Predictions")
+
+                    branches=message["content"]["branches"]
+
+                    for _,row in branches.iterrows():
+
+                        st.metric(
+
+                            label=row["Course"],
+
+                            value=f"{row['Probability']:.2f}%"
+
+                        )
+
+                if "cutoffs" in message["content"]:
+
+                    st.subheader("📊 Historical Cutoff Analysis")
+
+                    st.dataframe(
+
+                        message["content"]["cutoffs"],
+
+                        hide_index=True,
+
+                        use_container_width=True
+
+                    )
 
             else:
 
-                st.warning(
-                    "Please provide a valid KEAM rank and category."
+                st.write(message["content"])
+
+        else:
+
+            st.write(message["content"])
+
+# -----------------------------------
+# INPUT
+# -----------------------------------
+
+prompt = st.chat_input(
+    "Ask anything about MEC admissions..."
+)
+
+# Quick Question clicked?
+
+if "quick_prompt" in st.session_state:
+
+    prompt=st.session_state.quick_prompt
+
+    del st.session_state.quick_prompt
+
+# -----------------------------------
+# CHAT
+# -----------------------------------
+
+if prompt:
+
+    st.session_state.messages.append(
+
+        {
+
+            "role":"user",
+
+            "content":prompt
+
+        }
+
+    )
+
+    with st.chat_message("user"):
+
+        st.write(prompt)
+
+    with st.spinner("Thinking..."):
+
+        result=chat(prompt)
+
+    with st.chat_message("assistant"):
+
+        if result["type"]=="prediction":
+
+            branches=result["branches"]
+
+            cutoffs=result["cutoffs"]
+
+            st.success("Prediction completed successfully.")
+
+            st.subheader("🏆 Top Branch Predictions")
+
+            for _,row in branches.iterrows():
+
+                st.metric(
+
+                    label=row["Course"],
+
+                    value=f"{row['Probability']:.2f}%"
+
                 )
-    # =====================================
-# POPULAR FAQs
-# =====================================
 
-st.subheader("📌 Popular Questions")
+            st.subheader("📊 Historical Cutoff Analysis")
 
-with st.expander("What is CSBS?"):
-    st.write(
-        "Computer Science and Business Systems combines Computer Science with Business and Management subjects."
+            st.dataframe(
+
+                cutoffs,
+
+                hide_index=True,
+
+                use_container_width=True
+
+            )
+
+            assistant_message={
+
+                "branches":branches,
+
+                "cutoffs":cutoffs
+
+            }
+
+        else:
+
+            st.write(result["answer"])
+
+            assistant_message=result["answer"]
+
+    st.session_state.messages.append(
+
+        {
+
+            "role":"assistant",
+
+            "content":assistant_message
+
+        }
+
     )
 
-with st.expander("What is CSE?"):
-    st.write(
-        "Computer Science and Engineering focuses on programming, software development, AI, data structures and computer systems."
-    )
+# -----------------------------------
+# FOOTER
+# -----------------------------------
 
-with st.expander("What is ECE?"):
-    st.write(
-        "Electronics and Communication Engineering deals with communication systems, embedded systems and electronics."
-    )
+st.divider()
 
-with st.expander("What is EEE?"):
-    st.write(
-        "Electrical and Electronics Engineering focuses on power systems, electrical machines and electronics."
-    )
-
-with st.expander("What is VLSI?"):
-    st.write(
-        "VLSI Engineering focuses on chip design, semiconductor technology and integrated circuits."
-    )
-
-with st.expander("What is MEC?"):
-    st.write(
-        "Government Model Engineering College (MEC), Thrikkakara, is one of Kerala's leading engineering colleges."
-    )
-
-with st.expander("Who conducts KEAM?"):
-    st.write(
-        "KEAM is conducted by the Commissioner for Entrance Examinations (CEE), Kerala."
-    )
-
-with st.expander("Which branch has the highest cutoff in MEC?"):
-    st.write(
-        "Computer Science and Engineering usually has the highest cutoff rank."
-    )
-
-with st.expander("Which branch has the best placements?"):
-    st.write(
-        "CSE and CSBS generally record the highest placement statistics, followed by ECE."
-    )
-
-with st.expander("What can AdmissionGPT do?"):
-    st.write(
-        "AdmissionGPT predicts branch preferences, analyzes admission chances using cutoff trends, and answers MEC admission related questions."
-    )
+st.caption(
+    "Developed using Machine Learning • ChromaDB • Gemini • Streamlit"
+)
